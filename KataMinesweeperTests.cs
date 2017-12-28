@@ -31,6 +31,7 @@ namespace KataMinesweeper
         private readonly int _fieldSize;
         private readonly int _extFieldSize;
         private int[] _adjacencyField;
+        private static readonly int[] MineNeighbors = {1, 0, 1};
         private const int BorderSize = 2;
 
         public Game(string initialField)
@@ -46,10 +47,9 @@ namespace KataMinesweeper
             _adjacencyField = new int[_extFieldSize];
 
             _minesField
-                .Select(MineLayer)
-                .Where(LayersWithMines)
-                .Select(ToBinaryString)
-                .Select(ToIntArray)
+                .Select(Square)
+                .Where(ThereIsAMine)
+                .Select(MineAdjacencyLayerOfSize(_extFieldSize))
                 .Aggregate(_adjacencyField, SumOfLayers);
         }
 
@@ -62,30 +62,23 @@ namespace KataMinesweeper
             return sum;
         }
 
-        private static int[] ToIntArray(string layerMines)
+        private static (bool, int) Square(char square, int index) => (square == '*', index);
+ 
+        private static bool ThereIsAMine((bool isMinePresent, int) square) => square.isMinePresent;
+ 
+        private static Func<(bool, int), int[]> MineAdjacencyLayerOfSize(int size) => ((bool, int offset) square) =>
         {
-            return layerMines.Select(_ => Convert.ToInt32(_.ToString())).ToArray();
-        }
-
-        private string ToBinaryString(long layerMines)
-        {
-            return Convert.ToString(layerMines, 2).PadLeft(_extFieldSize, '0');
-        }
-
-        private static bool LayersWithMines(long layerMines)
-        {
-            return layerMines > 0;
-        }
-
-        private long MineLayer(char cell, int index)
-        {
-            double pos = Math.Pow(2, _fieldSize - index - 1);
-            return cell == '*' ? 5 * (long)pos : 0;
-        }
-
+            var layer = new int[size];
+            layer[square.offset + 0] = MineNeighbors[0];
+            layer[square.offset + 1] = MineNeighbors[1];
+            layer[square.offset + 2] = MineNeighbors[2];
+            return layer;
+        };
+ 
         internal string AdjacencyField()
         {
             var extMinesField = "." + _minesField + ".";
+            
             return string.Join("", _adjacencyField.Zip(extMinesField, CellToString).Skip(1).Take(_fieldSize));
         }
 
