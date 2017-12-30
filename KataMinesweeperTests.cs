@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using Xunit;
 
 namespace KataMinesweeper
@@ -19,27 +21,56 @@ namespace KataMinesweeper
         [InlineData("*.*", "*2*")]
         [InlineData("*..*", "*11*")]
         [InlineData("*...*", "*101*")]
-        public void Test1(string minesField, string adjacencyField)
+        public void Test1D(string minesField, string adjacencyField)
         {
-            var game = new Game(minesField);
+            var game = new Game(1, minesField.Length, minesField);
+            Assert.Equal(adjacencyField, game.AdjacencyField());
+        }
+
+        [Theory]
+        [InlineData(2, 2, "....", "0000")]
+        [InlineData(2, 2, "...*", "111*")]
+        [InlineData(3, 3, "....*....", "1111*1111")]
+        [InlineData(5, 5, "............*............", "000000111001*100111000000")]
+        [InlineData(4, 4, "*........*......", "*10022101*101110")]
+        [InlineData(3, 5, "**.........*...", "**100332001*100")]
+        public void Test2D(int lines, int columns, string minesField, string adjacencyField)
+        {
+            var game = new Game(lines, columns, minesField);
             Assert.Equal(adjacencyField, game.AdjacencyField());
         }
     }
     public class Game
     {
         private readonly string _minesField;
-        private readonly int _fieldSize;
+        private readonly int _lines;
+        private readonly int _lineSize;
+        private readonly int _extLineSize;
         private readonly int _extFieldSize;
         private int[] _adjacencyField;
-        private static readonly int[] MineNeighbors = {1, 0, 1};
+        private static readonly int[,] NeighborsMask = new int[3,3] {{1, 1, 1}, {1, 0, 1}, {1, 1, 1}};
         private const int BorderSize = 2;
 
-        public Game(string initialField)
+        public Game(int lines, int columns, string initialField)
         {
-            _minesField = initialField;
-            _fieldSize = initialField.Length;
-            _extFieldSize = _fieldSize + BorderSize;
+            _lines = lines;
+            _lineSize = columns;
+            _extLineSize = columns + BorderSize;
+            _extFieldSize = _extLineSize * (lines + BorderSize);
+            
+            var emptyLine = Enumerable.Repeat('.', _lineSize + BorderSize);
+            var splittedLines = SplitLines(initialField, columns);
+            _minesField = string.Concat(emptyLine.Concat(splittedLines.SelectMany(line => line)).Concat(emptyLine));
+
             BuildAdjacencyField();
+        }
+
+        private static IEnumerable<string> SplitLines(string field, int lineSize)
+        {
+            for (int i = 0; i < field.Length; i += lineSize)
+            {
+                yield return '.' + field.Substring(i, Math.Min(lineSize, field.Length - i)) + '.';
+            }
         }
 
         private void BuildAdjacencyField()
@@ -49,39 +80,41 @@ namespace KataMinesweeper
             _minesField
                 .Select(Square)
                 .Where(ThereIsAMine)
-                .Select(MineAdjacencyLayerOfSize(_extFieldSize))
-                .Aggregate(_adjacencyField, SumOfLayers);
-        }
-
-        private static int[] SumOfLayers(int[] sum, int[] mineLayer)
-        {
-            for (int i = 0; i < mineLayer.Length; i++)
-            {
-                sum[i] += mineLayer[i];
-            }
-            return sum;
+                .Aggregate(_adjacencyField, SumOfLayers(_extLineSize));
         }
 
         private static (bool, int) Square(char square, int index) => (square == '*', index);
  
         private static bool ThereIsAMine((bool isMinePresent, int) square) => square.isMinePresent;
- 
-        private static Func<(bool, int), int[]> MineAdjacencyLayerOfSize(int size) => ((bool, int offset) square) =>
+
+        private static Func<int[], (bool, int), int[]> SumOfLayers(int lineSize) => (int[] sum, (bool, int offset) mineLayer) =>
         {
-            var layer = new int[size];
-            layer[square.offset + 0] = MineNeighbors[0];
-            layer[square.offset + 1] = MineNeighbors[1];
-            layer[square.offset + 2] = MineNeighbors[2];
-            return layer;
+            for (int i = 0; i < NeighborsMask.GetLength(0); i++)
+            {
+                for (int j = 0; j < NeighborsMask.GetLength(1); j++)
+                {
+                    sum[mineLayer.offset + (i - 1) * lineSize + j - 1] += NeighborsMask[i, j];
+                }
+            }
+            return sum;
         };
- 
+
         internal string AdjacencyField()
         {
-            var extMinesField = "." + _minesField + ".";
-            
-            return string.Join("", _adjacencyField.Zip(extMinesField, CellToString).Skip(1).Take(_fieldSize));
+            return StripBorder(_adjacencyField.Zip(_minesField, CellToString));
         }
 
-        private string CellToString(int adjacentMines, char originalCell) => originalCell == '*' ? "*" : adjacentMines.ToString();
+        private string StripBorder(IEnumerable<char> extResultField)
+        {
+            var strippedResult = new StringBuilder();
+            var extResultList = extResultField.ToList();
+            for (int i = 0; i < _lines; i++)
+            {
+                strippedResult.Append(string.Concat(extResultList.GetRange((i + 1) * _extLineSize + 1, _lineSize)));
+            }
+            return strippedResult.ToString();
+        }
+
+        private char CellToString(int adjacentMines, char originalCell) => originalCell == '*' ? '*' : adjacentMines.ToString()[0];
     }
 }
